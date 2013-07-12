@@ -2,15 +2,31 @@
 Servo triggerBottom; //bottom
 Servo triggerTop; //top
 
-#define POT_PIN A0
-#define Z_PIN A1
-#define RND_PIN A2
-#define BOTTOM_SWITCH_PIN 3
-#define TOP_SWITCH_PIN 2
-#define SERVO_BOTTOM_PIN 4
-#define SERVO_TOP_PIN 6
-#define RELAY_PIN 8
-#define MOTOR_PIN 9
+//#define POT A0
+#define Z A1
+#define RND A2
+
+#define MOTOR_DRIVE 3
+
+#define SW_SWING_TOP 2
+#define SW_SWING_BTM 4
+
+#define SRV_TRIGGER_BTM 5
+#define SRV_TRIGGER_TOP 6
+
+#define MOTOR_GEAR1 7
+#define MOTOR_GEAR2 8
+#define MOTOR_GEAR_PWM 9
+
+#dfeine SW_GEAR1 10
+#define SW_GEAR2 11
+
+#dfeine SENSOR_DISTANCE1 22
+#define SENSOR_DISTANCE2 24
+
+#define RELAY 26
+
+
 
 boolean serial = false;
 
@@ -69,16 +85,16 @@ byte phase = 0;
 
 void setup(){
   Serial.begin(57600);
-  pinMode(BOTTOM_SWITCH_PIN, INPUT);
-  pinMode(TOP_SWITCH_PIN, INPUT);
-  pinMode(RELAY_PIN, OUTPUT);
-  pinMode(MOTOR_PIN, OUTPUT);
-  pinMode(SERVO_BOTTOM_PIN, OUTPUT);
-  pinMode(SERVO_TOP_PIN, OUTPUT);
-  randomSeed(analogRead(RND_PIN));
+  pinMode(BOTTOM_SWITCH, INPUT);
+  pinMode(TOP_SWITCH, INPUT);
+  pinMode(RELAY, OUTPUT);
+  pinMode(MOTOR, OUTPUT);
+  pinMode(SERVO_BOTTOM, OUTPUT);
+  pinMode(SERVO_TOP, OUTPUT);
+  randomSeed(analogRead(RND));
 
-  triggerBottom.attach(SERVO_BOTTOM_PIN);
-  triggerTop.attach(SERVO_TOP_PIN);
+  triggerBottom.attach(SERVO_BOTTOM);
+  triggerTop.attach(SERVO_TOP);
   push("off");
 
   initialTrigger = random(2);
@@ -93,7 +109,7 @@ void loop(){
   time = millis();
 
   //smoothing
-  int raw = analogRead(Z_PIN);
+  int raw = analogRead(Z);
   buffer[index] = raw;
   index = (index + 1) % BUFFER_LENGTH;
   smoothedZ = smoothByMeanFilter(buffer);
@@ -118,7 +134,7 @@ void loop(){
 //BASE FUNCTIONS//////////////////////////////////////////////////////
 
 void boot(){
-  digitalWrite(RELAY_PIN, HIGH);
+  digitalWrite(RELAY, HIGH);
 
   if(time < bootStartTime + runningTime) motorDrive(10);
   else if(bootStartTime + runningTime < time && time < bootStartTime + runningTime + waitingTime) motorDrive(0);
@@ -150,8 +166,8 @@ void drawing(){
       else push("bottom");
     }
     else if(2 < count && count < countMax){
-      switchStateBottom = digitalRead(BOTTOM_SWITCH_PIN);
-      switchStateTop = digitalRead(TOP_SWITCH_PIN);
+      switchStateBottom = digitalRead(BOTTOM_SWITCH);
+      switchStateTop = digitalRead(TOP_SWITCH);
 
       if(switchStateBottom - lastSwitchStateBottom == 1 ||
         switchStateTop - lastSwitchStateTop == 1 ||
@@ -195,7 +211,7 @@ void drawing(){
 void sleep(){
   push("off");
   motorDrive(0);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(RELAY, LOW);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -240,19 +256,19 @@ void motorDrive(int n){
    */
   switch(n){
   case 0:
-    analogWrite(MOTOR_PIN, speedStop);
+    analogWrite(MOTOR, speedStop);
     break;
   case 1:
-    analogWrite(MOTOR_PIN, speedLeft);
+    analogWrite(MOTOR, speedLeft);
     break;
   case 2:
-    analogWrite(MOTOR_PIN, speedRight);
+    analogWrite(MOTOR, speedRight);
     break;
   case 10:
-    analogWrite(MOTOR_PIN, speedInit);
+    analogWrite(MOTOR, speedInit);
     break;
   default:
-    analogWrite(MOTOR_PIN, speedStop);
+    analogWrite(MOTOR, speedStop);
   }
 }
 
