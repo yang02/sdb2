@@ -1,36 +1,25 @@
 #include <Servo.h>
-Servo triggerBottom; //bottom
-Servo triggerTop; //top
 
-//#define POT A0
-#define Z A1
+// pin asign ///////////////////////////////
 #define RND A2
-
 #define MOTOR_DRIVE 3
-
 #define SW_SWING_TOP 2
 #define SW_SWING_BTM 4
-
 #define SRV_TRIGGER_BTM 5
 #define SRV_TRIGGER_TOP 6
-
 #define MOTOR_GEAR1 7
 #define MOTOR_GEAR2 8
 #define MOTOR_GEAR_PWM 9
-
-#dfeine SW_GEAR1 10
+#define SW_GEAR1 10
 #define SW_GEAR2 11
-
-#dfeine SENSOR_DISTANCE1 22
-#define SENSOR_DISTANCE2 24
-
+#define SENSOR_DISTANCE_L 22
+#define SENSOR_DISTANCE_R 24
 #define RELAY 26
 
+// servo ///////////////////////////////
+Servo triggerBottom; //bottom
+Servo triggerTop; //top
 
-
-boolean serial = false;
-
-//for servo
 boolean triggerStateTop = false;
 byte switchStateBottom = 0;
 byte switchStateTop = 0;
@@ -38,10 +27,10 @@ byte lastSwitchStateBottom = 0;
 byte lastSwitchStateTop = 0;
 byte initialTrigger;
 
-//for motor
-int speedLeft = 140;
-int speedRight = 14;
-int speedInit = 24;
+// drive motor ///////////////////////////////
+int speedLeft = 55;
+int speedRight = 19;
+int speedInit = 21;
 int speedStop = 36;
 byte movDir = 0;
 byte lastMovDir = 0;
@@ -52,30 +41,41 @@ byte lastMovDir = 0;
  10 = move right slowly (speedInit)
  */
 
-//Z accelaration
-const int BUFFER_LENGTH = 20;
-int buffer[BUFFER_LENGTH];
-int index = 0;
-int smoothedZ = 0;
+// gun & direction ///////////////////////////////
+/* gunDirection
+ 0   = front
+ 90  = left side
+ 180 = back
+ 270 = right side
+ */
+unsigned int dickDir = 0;
+unsigned int distSensorL;
+unsigned int distSensorR;
+int pulse_w; //for getDistance
+unsigned int phaseDelay = 5000;
+const unsigned int minDist = 100; //1m
 
-//conditions
+
+// conditions ///////////////////////////////
 byte count = 0;
 byte countMax = 18;
 unsigned int dly = 800;
 unsigned int rndDly = 0;
 unsigned int rndDlyMotor = 0;
-const int rndDlyRange = 1500;
+const int rndDlyRange = 700;
 const int rndDlyMotorRange = 1600;
 
-//timings
-unsigned long time = 0;
+const int kickbackDelay = 1000;
+
+// timings ///////////////////////////////
 unsigned int runningTime = 3000;
 unsigned int waitingTime = 3000;
-unsigned int drawingStartTime = 0;
 unsigned int bootStartTime = 0;
+unsigned int drawingStartTime = 0;
 unsigned int timeStampTrigger = 0;
 unsigned int timeStampMotor = 0;
 
+boolean serial = false;
 byte phase = 0;
 /*
 0 = stop
@@ -83,130 +83,167 @@ byte phase = 0;
  2 = drawing phase
  */
 
+// for test///////////////////////
+boolean test = false;
+byte testCount = 0;
+//////////////////////////////////
+
+
 void setup(){
   Serial.begin(57600);
-  pinMode(BOTTOM_SWITCH, INPUT);
-  pinMode(TOP_SWITCH, INPUT);
+
+  pinMode(SW_SWING_TOP, INPUT);
+  pinMode(SW_SWING_BTM, INPUT);
+  pinMode(MOTOR_DRIVE, OUTPUT);
+  pinMode(SRV_TRIGGER_BTM, OUTPUT);
+  pinMode(SRV_TRIGGER_TOP, OUTPUT);
+  pinMode(MOTOR_GEAR1, OUTPUT);
+  pinMode(MOTOR_GEAR2, OUTPUT);
+  pinMode(MOTOR_GEAR_PWM, OUTPUT);
+  pinMode(SW_GEAR1, INPUT);
+  pinMode(SW_GEAR2, INPUT);
+  pinMode(SENSOR_DISTANCE_L, INPUT);
+  pinMode(SENSOR_DISTANCE_R, INPUT);
   pinMode(RELAY, OUTPUT);
-  pinMode(MOTOR, OUTPUT);
-  pinMode(SERVO_BOTTOM, OUTPUT);
-  pinMode(SERVO_TOP, OUTPUT);
+
   randomSeed(analogRead(RND));
 
-  triggerBottom.attach(SERVO_BOTTOM);
-  triggerTop.attach(SERVO_TOP);
+  triggerBottom.attach(SRV_TRIGGER_BTM);
+  triggerTop.attach(SRV_TRIGGER_TOP);
   push("off");
 
-  initialTrigger = random(2);
   sleep();
-  time = millis();
   //bootStartTime = time;
-  phase = 0;
+  phase = 1;
 }
 
 void loop(){
 
-  time = millis();
+  //  if (Serial.available() > 0) {
+  //    if(!serial){
+  //      bootStartTime = millis();
+  //      phase = 1;
+  //      serial = true;
+  //    }
+  //  }
 
-  //smoothing
-  int raw = analogRead(Z);
-  buffer[index] = raw;
-  index = (index + 1) % BUFFER_LENGTH;
-  smoothedZ = smoothByMeanFilter(buffer);
+  //always watching distance L & R
+  distSensorL = getDistance(SENSOR_DISTANCE_L);
+  distSensorR = getDistance(SENSOR_DISTANCE_R);
 
-  if (Serial.available() > 0) {
-    Serial.println(smoothedZ);
-    if(!serial){
-      bootStartTime = time;
-      phase = 1;
-      serial = true;
+  if(!test){
+    //movement flow
+    if(phase == 0) sleep();
+    else if(phase == 1) wakeup();
+    else if(phase == 2) jizz();
+  }
+  else{
+    rotate(1);
+    if(testCount < 5){
+      delay(1100);
+      push("top");
+      delay(1100);
+      push("bottom");
+      testCount++;
+    }
+    else{
+      rotate(0);
+      push("off");
     }
   }
-
-  //movement flow
-  if(phase == 0) sleep();
-  else if(phase == 1) boot();
-  else if(phase == 2) drawing();
-
 }
 
 
 //BASE FUNCTIONS//////////////////////////////////////////////////////
 
-void boot(){
+void wakeup(){
   digitalWrite(RELAY, HIGH);
 
-  if(time < bootStartTime + runningTime) motorDrive(10);
-  else if(bootStartTime + runningTime < time && time < bootStartTime + runningTime + waitingTime) motorDrive(0);
-  else if(bootStartTime + runningTime + waitingTime < time) {
+  //start initial running
+  if(millis() < bootStartTime + runningTime) motorDrive(10);
+
+  //stop and waiting for draw
+  else if(bootStartTime + runningTime < millis() && millis() < bootStartTime + runningTime + waitingTime) motorDrive(0);
+
+  else if(bootStartTime + runningTime + waitingTime < millis()) {
+    initialTrigger = random(2);
     if(initialTrigger) triggerStateTop = true;
     else triggerStateTop = false;
 
-    drawingStartTime = time;
-    timeStampMotor = time;
+    timeStampMotor = millis();
+    timeStampTrigger = millis();
     rndDly = random(rndDlyRange) + 400;
     rndDlyMotor = random(rndDlyRange) + 400;
-    motorDrive(0);
+    motorDrive(2);
     phase = 2;
   }
   Serial.println("boot");
 }
 
-void drawing(){
 
-  if(count < countMax){
-    //trigger
-    if(count < 3){
-      if(drawingStartTime+dly*(count+1) < time){
-        triggerStateTop = !triggerStateTop;
-        timeStampTrigger = time;
-        count++;
+void jizz(){
+
+  if(dickDir == 0 || dickDir == 180){
+    rotate(0);
+
+    if(dickDir == 0){
+      if(distSensorL < minDist){
+        motorDrive(1);
+        delay(kickbackDelay);
+        pause();
+        delay(phaseDelay);
+        dickDir = 90;
       }
-      if(triggerStateTop) push("top");
-      else push("bottom");
-    }
-    else if(2 < count && count < countMax){
-      switchStateBottom = digitalRead(BOTTOM_SWITCH);
-      switchStateTop = digitalRead(TOP_SWITCH);
-
-      if(switchStateBottom - lastSwitchStateBottom == 1 ||
-        switchStateTop - lastSwitchStateTop == 1 ||
-        timeStampTrigger + rndDly < time){
-        triggerStateTop = !triggerStateTop;
-        count++;
-        timeStampTrigger = time;
-        rndDly = random(rndDlyRange) + 500;
-
-        movDir = random(4);
-        if(1 < movDir) movDir = 2;
-        motorDrive(movDir);
+      else {
+        motorDrive(2);
+        jizzing();
       }
-
-      if(triggerStateTop) push("top");
-      else push("bottom");
-
-      lastSwitchStateBottom = switchStateBottom;
-      lastSwitchStateTop = switchStateTop;
     }
-
-    //motor
-    if(timeStampMotor + rndDlyMotor < time){
-      motorDrive(getMovDir());
-      timeStampMotor = time;
-      rndDlyMotor = random(rndDlyMotorRange) + 500;
-      lastMovDir = movDir;
-      Serial.print("movDir = ");
-      Serial.print(movDir);
-      Serial.print(" ");
-      Serial.print("rndDlyMotor = ");
-      Serial.println(rndDlyMotor);
+    else if(dickDir == 180){
+      if(distSensorR < minDist){
+        motorDrive(2);
+        delay(kickbackDelay);
+        pause();
+        delay(phaseDelay);
+        dickDir = 270;
+      }
+      else {
+        motorDrive(1);
+        jizzing();
+      }
     }
   }
-  else{
-    phase = 0;
-  }
 
+  else if(dickDir == 90 || dickDir == 270){
+    motorDrive(0);
+
+    if(dickDir == 90){
+      if(digitalRead(SW_GEAR2) == 1){
+        pause();
+        delay(phaseDelay);
+        dickDir = 180;
+      }
+      else {
+        rotate(1);
+        jizzing();
+      }
+    }
+    else if(dickDir == 270){
+      if(digitalRead(SW_GEAR1) == 1){
+        pause();
+        delay(phaseDelay);
+        dickDir = 360;
+      }
+      else {
+        rotate(1);
+        jizzing();
+      }
+    }
+  }
+  else if(dickDir == 360) phase = 0;
 }
+
+
 
 void sleep(){
   push("off");
@@ -215,6 +252,42 @@ void sleep(){
 }
 
 ////////////////////////////////////////////////////////////////////////
+
+void jizzing(){
+  switchStateBottom = digitalRead(SW_SWING_BTM);
+  switchStateTop = digitalRead(SW_SWING_TOP);
+
+  if(switchStateBottom != lastSwitchStateBottom ||  switchStateTop != lastSwitchStateTop || timeStampTrigger + rndDly < millis()){
+    triggerStateTop = !triggerStateTop;
+    timeStampTrigger = millis();
+    rndDly = random(rndDlyRange) + 500;
+  }
+  if(triggerStateTop) push("top");
+  else push("bottom");
+
+//  //motor
+//  if(timeStampMotor + rndDlyMotor < millis()){
+//    if(dickDir == 0 || dickDir == 180) {
+//      motorDrive(getMovDir());
+//      rotate(0);
+//    }
+//    else if(dickDir == 90 || dickDir == 270){
+//      motorDrive(0);
+//      rotate(1);
+//    }
+//    timeStampMotor = millis();
+//    rndDlyMotor = random(rndDlyMotorRange) + 1000;
+//  }
+
+  lastSwitchStateBottom = switchStateBottom;
+  lastSwitchStateTop = switchStateTop;
+}
+
+void pause(){
+  push("off");
+  rotate(0);
+  motorDrive(0);
+}
 
 void push(String state){
   int n = 0;
@@ -256,37 +329,41 @@ void motorDrive(int n){
    */
   switch(n){
   case 0:
-    analogWrite(MOTOR, speedStop);
+    analogWrite(MOTOR_DRIVE, speedStop);
     break;
   case 1:
-    analogWrite(MOTOR, speedLeft);
+    analogWrite(MOTOR_DRIVE, speedLeft);
     break;
   case 2:
-    analogWrite(MOTOR, speedRight);
+    analogWrite(MOTOR_DRIVE, speedRight);
     break;
   case 10:
-    analogWrite(MOTOR, speedInit);
+    analogWrite(MOTOR_DRIVE, speedInit);
     break;
   default:
-    analogWrite(MOTOR, speedStop);
+    analogWrite(MOTOR_DRIVE, speedStop);
   }
 }
 
+void rotate(byte state){
+  if(state == 1){
+    analogWrite(MOTOR_GEAR_PWM, 255);  
+    digitalWrite(MOTOR_GEAR1, HIGH);
+    digitalWrite(MOTOR_GEAR2, LOW);
+  }
+  else if(state == 2){
+    analogWrite(MOTOR_GEAR_PWM, 255);  
+    digitalWrite(MOTOR_GEAR1, LOW);
+    digitalWrite(MOTOR_GEAR2, HIGH);
+  }
+  else if(state == 0){
+    analogWrite(MOTOR_GEAR_PWM, 0);  
+    digitalWrite(MOTOR_GEAR1, LOW);
+    digitalWrite(MOTOR_GEAR2, LOW);
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////
-
-int smoothByMeanFilter(int b[]) {
-  // バッファの値の合計を集計するための変数
-  long sum = 0;
-
-  // バッファの値の合計を集計
-  for (int i = 0; i < BUFFER_LENGTH; i++) {
-    sum += b[i];
-  }
-
-  // 平均をフィルタの出力結果として返す
-  return (int)(sum / BUFFER_LENGTH);
-}
 
 int getPushVal(int n, boolean state){
   //bottom: n = 0
@@ -295,21 +372,31 @@ int getPushVal(int n, boolean state){
   int n2 = 30;
 
   if(n == 0){
-    if(state) return n2;
-    else return n1;
+    if(state) return 30;
+    else return 150;
   }
   else if(n == 1){
-    if(state) return n1;
-    else return n2;
+    if(state) return 150;
+    else return 30;
   }
 }
 
 
 int getMovDir(){
   movDir = random(17);
-  if(movDir < 3) movDir = 0;
-  else if(2 < movDir && movDir < 7) movDir = 1;
-  else if(6 < movDir) movDir = 2;
+  
+  if(movDir < 1) movDir = 0;
+  else if(0 < movDir && movDir < 4) {
+    if(dickDir == 0) movDir = 1;
+    else if(dickDir == 180) movDir = 2;
+    else if(dickDir == 90 || dickDir == 270) movDir = 2;
+  }
+  else if(3 < movDir) {
+    if(dickDir == 0) movDir = 2;
+    else if(dickDir == 180) movDir = 1;
+    else if(dickDir == 90 || dickDir == 270) movDir = 1;
+  }
+
 
   //  if(movDir != 2 && lastMovDir == movDir){
   //    if(movDir == 0) movDir = 1;
@@ -318,6 +405,24 @@ int getMovDir(){
 
   return movDir;
 }
+
+int getDistance(byte sensor_pin){
+  pinMode(sensor_pin, OUTPUT);
+  digitalWrite(sensor_pin, LOW);
+
+  digitalWrite(sensor_pin, HIGH);
+  delayMicroseconds(2);
+  digitalWrite(sensor_pin, LOW);
+
+  delayMicroseconds(5);
+  pinMode(sensor_pin, INPUT);
+
+  pulse_w = pulseIn(sensor_pin, HIGH);
+  int distance = pulse_w*0.0342/2;
+  return distance;
+}
+
+
 
 
 
