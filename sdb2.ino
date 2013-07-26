@@ -1,7 +1,7 @@
 #include <Servo.h>
 
 // pin asign ///////////////////////////////
-#define RND A2
+#define RND A0
 #define MOTOR_DRIVE 3
 #define SW_SWING_TOP 2
 #define SW_SWING_BTM 4
