@@ -1,3 +1,10 @@
+/*
+  Using Arduino MEGA ADK
+  
+  Dvelopedn for TRANS ARTS TOKYO
+  Going one way and running comletely random.
+*/
+
 #include <Servo.h>
 Servo triggerBottom; //bottom
 Servo triggerTop; //top
