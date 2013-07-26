@@ -1,3 +1,11 @@
+/*
+  Developed for JIZZED IN MY PANTS @ 3331
+  
+  Using Arduino MEGA ADK.
+  Rotate washer head could be painting whole space.
+*/
+
+
 #include <Servo.h>
 
 // pin asign ///////////////////////////////
@@ -30,19 +38,11 @@ byte initialTrigger;
 // drive motor ///////////////////////////////
 int speedLeft = 55;
 int speedRight = 19;
-int speedInit = 21;
+int speedInit = 21; //Initial movement speed (slowly)
 int speedStop = 36;
-byte movDir = 0;
-byte lastMovDir = 0;
-/*
-0 = stop;
- 1 = move left
- 2 = move right
- 10 = move right slowly (speedInit)
- */
 
 // gun & direction ///////////////////////////////
-/* gunDirection
+/* dickDir
  0   = front
  90  = left side
  180 = back
@@ -57,9 +57,6 @@ const unsigned int minDist = 100; //1m
 
 
 // conditions ///////////////////////////////
-byte count = 0;
-byte countMax = 18;
-unsigned int dly = 800;
 unsigned int rndDly = 0;
 unsigned int rndDlyMotor = 0;
 const int rndDlyRange = 700;
@@ -119,14 +116,6 @@ void setup(){
 
 void loop(){
 
-  //  if (Serial.available() > 0) {
-  //    if(!serial){
-  //      bootStartTime = millis();
-  //      phase = 1;
-  //      serial = true;
-  //    }
-  //  }
-
   //always watching distance L & R
   distSensorL = getDistance(SENSOR_DISTANCE_L);
   distSensorR = getDistance(SENSOR_DISTANCE_R);
@@ -138,6 +127,7 @@ void loop(){
     else if(phase == 2) jizz();
   }
   else{
+    //test shoot for gun
     rotate(1);
     if(testCount < 5){
       delay(1100);
@@ -163,7 +153,8 @@ void wakeup(){
   if(millis() < bootStartTime + runningTime) motorDrive(10);
 
   //stop and waiting for draw
-  else if(bootStartTime + runningTime < millis() && millis() < bootStartTime + runningTime + waitingTime) motorDrive(0);
+  else if(bootStartTime + runningTime < millis() &&
+          millis() < bootStartTime + runningTime + waitingTime) motorDrive(0);
 
   else if(bootStartTime + runningTime + waitingTime < millis()) {
     initialTrigger = random(2);
@@ -257,27 +248,16 @@ void jizzing(){
   switchStateBottom = digitalRead(SW_SWING_BTM);
   switchStateTop = digitalRead(SW_SWING_TOP);
 
-  if(switchStateBottom != lastSwitchStateBottom ||  switchStateTop != lastSwitchStateTop || timeStampTrigger + rndDly < millis()){
+  if(switchStateBottom != lastSwitchStateBottom ||
+      switchStateTop != lastSwitchStateTop ||
+      timeStampTrigger + rndDly < millis()){
+
     triggerStateTop = !triggerStateTop;
     timeStampTrigger = millis();
     rndDly = random(rndDlyRange) + 500;
   }
   if(triggerStateTop) push("top");
   else push("bottom");
-
-//  //motor
-//  if(timeStampMotor + rndDlyMotor < millis()){
-//    if(dickDir == 0 || dickDir == 180) {
-//      motorDrive(getMovDir());
-//      rotate(0);
-//    }
-//    else if(dickDir == 90 || dickDir == 270){
-//      motorDrive(0);
-//      rotate(1);
-//    }
-//    timeStampMotor = millis();
-//    rndDlyMotor = random(rndDlyMotorRange) + 1000;
-//  }
 
   lastSwitchStateBottom = switchStateBottom;
   lastSwitchStateTop = switchStateTop;
@@ -363,7 +343,7 @@ void rotate(byte state){
   }
 }
 
-////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
 
 int getPushVal(int n, boolean state){
   //bottom: n = 0
@@ -379,31 +359,6 @@ int getPushVal(int n, boolean state){
     if(state) return 150;
     else return 30;
   }
-}
-
-
-int getMovDir(){
-  movDir = random(17);
-  
-  if(movDir < 1) movDir = 0;
-  else if(0 < movDir && movDir < 4) {
-    if(dickDir == 0) movDir = 1;
-    else if(dickDir == 180) movDir = 2;
-    else if(dickDir == 90 || dickDir == 270) movDir = 2;
-  }
-  else if(3 < movDir) {
-    if(dickDir == 0) movDir = 2;
-    else if(dickDir == 180) movDir = 1;
-    else if(dickDir == 90 || dickDir == 270) movDir = 1;
-  }
-
-
-  //  if(movDir != 2 && lastMovDir == movDir){
-  //    if(movDir == 0) movDir = 1;
-  //    else movDir = 0;
-  //  }
-
-  return movDir;
 }
 
 int getDistance(byte sensor_pin){
